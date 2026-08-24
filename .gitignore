@@ -1,0 +1,11 @@
+docs/
+out/
+scratch/
+data/
+__pycache__/
+*.pyc
+*_draft.md
+*_draft.sh
+.stfolder
+.stignore
+PROPOSAL.docx

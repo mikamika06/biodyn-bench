@@ -6,7 +6,9 @@
   один тип   лише одна популяція (контроль без суміші)
 """
 import argparse, json, pathlib, sys, time
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "src"))
+import os
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+os.chdir(pathlib.Path(__file__).resolve().parent.parent)  # out/ і data/ рахуються від кореня репо
 import numpy as np
 from math import erf, sqrt
 from sim.network import build_mixture

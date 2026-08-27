@@ -1,6 +1,8 @@
 """Дерева на нелінійності. Лише стовпці, де в лінійному режимі вони давали 1.000."""
 import json, pathlib, sys, time
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "src"))
+import os
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+os.chdir(pathlib.Path(__file__).resolve().parent.parent)  # out/ і data/ рахуються від кореня репо
 import numpy as np
 from eval.columns import COLUMNS, set_link
 from eval.metrics import auroc

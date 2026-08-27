@@ -36,34 +36,57 @@ reported it honestly".
 ## Layout
 
 ```
-src/sim/grid.py       nine causal structures, matched pairs, reference non-edges
-src/sim/network.py    connected scale-free DAG, cell-type mixtures
-src/sim/hill.py       Hill-kinetics generator (independent replication)
-src/sim/realistic.py  Splatter-style count hierarchy
-src/methods/          correlation, MI, partial correlation, ARACNe, trees,
-                      graphical lasso, pairwise LiNGAM
-src/model/            scGPT-style masked transformer + interpretability hooks
-src/eval/             AUROC, post-hoc strength matching
+src/sim/       generators
+  grid.py        nine causal structures, matched pairs, reference non-edges
+  network.py     connected scale-free DAG, cell-type mixtures
+  hill.py        Hill-kinetics generator (independent replication)
+  realistic.py   Splatter-style count hierarchy
+  counts.py      latent values to counts to normalised expression
+src/methods/   correlation, MI, partial correlation, ARACNe, trees,
+               graphical lasso, pairwise LiNGAM
+src/model/     scGPT-style masked transformer + interpretability hooks
+src/eval/      AUROC, post-hoc strength matching
 
-grid_run.py     classical methods across structures
-floor_grid.py   floor per structure and regime
-grid_model.py   two truths per structure
-net_run.py      connected graph, p/n sweep
-mix_run.py      cell-type mixtures
-depth_run.py    read depth and gene-level heterogeneity
-ablate.py       exhaustive head/neuron ablation, pairwise redundancy
-regime.py       regime calculator for a real count matrix
-report_all.py   consolidated report into out/RESULTS.md
+runs/          experiments
+  grid_run.py       classical methods across structures
+  floor_grid.py     floor per structure and regime
+  grid_model.py     two truths per structure
+  net_run.py        connected graph, p/n sweep
+  net_model.py      two truths inside a connected graph
+  mix_run.py        cell-type mixtures
+  depth_run.py      read depth and gene-level heterogeneity
+  ablate.py         exhaustive head/neuron ablation, pairwise redundancy
+  identify.py       identifiability by matching impossibility
+  identify_auroc.py the same, restated as an AUROC bound
+  ident_spread.py   per-seed spread of the residual
+  regime.py         regime calculator for a real count matrix
+
+reports/       consolidation
+  report_all.py     everything into out/RESULTS.md
+  report_double.py  dual matching criterion against per-regime floors
+  report_noise.py   signed method strength across noise shapes
+  compare_ident.py  identifiability against measured method power
+
+validation/    reference checks
+  validate_trees.py, ref_trees.py, compare_trees.py   our trees vs arboreto
+
+legacy/        superseded by the grid; kept because old results reference it
+run_all.sh     sequential work queue, every stage resumable
 ```
+
+Scripts change directory to the repository root on import, so `out/` and
+`data/` resolve the same way from any working directory.
 
 ## Quick start
 
 ```bash
-python grid_run.py --seeds 20            # classical methods, ~90 s
-python floor_grid.py --seeds 20          # floors for the same run
-python report_double.py                  # dual matching criterion
-python net_run.py --seeds 4              # connected graph, p/n sweep
-python regime.py --counts your_counts.npy
+python runs/grid_run.py --seeds 20         # classical methods, ~90 s
+python runs/floor_grid.py --seeds 20       # floors for the same run
+python reports/report_double.py            # dual matching criterion
+python runs/net_run.py --seeds 4           # connected graph, p/n sweep
+python runs/identify.py --seeds 3          # is the answer in the data at all
+python runs/regime.py --counts your.npy    # what regime is a real dataset in
+./run_all.sh                               # the full queue
 ```
 
 No data files are stored. Everything is generated from a seed, so a result is

@@ -2,7 +2,9 @@ import argparse
 import sys
 import pathlib
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "src"))
+import os
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+os.chdir(pathlib.Path(__file__).resolve().parent.parent)  # out/ і data/ рахуються від кореня репо
 
 import bench
 from eval.columns import set_link

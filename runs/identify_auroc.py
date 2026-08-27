@@ -11,7 +11,9 @@
 Це і є найкраще, чого може досягти метод на цьому наборі статистик.
 """
 import argparse, json, pathlib, sys
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "src"))
+import os
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+os.chdir(pathlib.Path(__file__).resolve().parent.parent)  # out/ і data/ рахуються від кореня репо
 import numpy as np
 from math import erf, sqrt
 from sim.grid import SPEC, matched

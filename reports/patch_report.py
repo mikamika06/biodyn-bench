@@ -1,5 +1,7 @@
 import argparse, json, pathlib, sys
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "src"))
+import os
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+os.chdir(pathlib.Path(__file__).resolve().parent.parent)  # out/ і data/ рахуються від кореня репо
 import numpy as np, torch
 from eval.panels import get as get_panel
 from eval.metrics import auroc

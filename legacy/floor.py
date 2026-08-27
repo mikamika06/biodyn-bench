@@ -1,6 +1,8 @@
 """Підлога стенду: залишкова похибка зрівнювання й AUROC, яку вона дає."""
 import json, pathlib, sys
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "src"))
+import os
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+os.chdir(pathlib.Path(__file__).resolve().parent.parent)  # out/ і data/ рахуються від кореня репо
 import numpy as np
 from math import erf, sqrt
 from eval.columns import COLUMNS, set_link

@@ -68,12 +68,13 @@ class GeneTransformer(nn.Module):
             h = self.encoder.norm(h)
         return self.head(h).squeeze(-1)
 
-    def attention_maps(self, values, mask):
+    def attention_maps(self, values, mask, per_head=False):
         h = self.embed(values, mask)
         maps = []
         for layer in self.encoder.layers:
             x = layer.norm1(h)
-            _, w = layer.self_attn(x, x, x, need_weights=True, average_attn_weights=True)
+            _, w = layer.self_attn(x, x, x, need_weights=True,
+                                   average_attn_weights=not per_head)
             maps.append(w)
             h = layer(h)
         return torch.stack(maps, 1)

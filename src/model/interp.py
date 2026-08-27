@@ -8,6 +8,26 @@ def _batches(x, bs):
 
 
 @torch.no_grad()
+def head_attention(model, x, dev, mask_frac=0.15, n_cells=512, seed=0, bs=64):
+    """Карта уваги ОКРЕМО для кожної голови: (шар, голова, ген, ген)."""
+    model.eval()
+    g = x.shape[1]
+    rng = np.random.default_rng(seed)
+    xs = torch.tensor(x[:n_cells], dtype=torch.float32)
+    acc, n = None, 0
+    for b in _batches(xs, bs):
+        m = torch.zeros(b.shape[0], g, dtype=torch.bool)
+        k = max(1, int(mask_frac * g))
+        for r in range(b.shape[0]):
+            m[r, torch.from_numpy(rng.choice(g, k, replace=False))] = True
+        a = model.attention_maps(b.to(dev), m.to(dev), per_head=True).mean(dim=0).cpu()
+        acc = a if acc is None else acc + a
+        n += 1
+    per = (acc / n).numpy()
+    return np.maximum(per, np.swapaxes(per, -1, -2))
+
+
+@torch.no_grad()
 def attention_network(model, x, dev, mask_frac=0.15, n_cells=512, seed=0, bs=64,
                       per_layer=False):
     model.eval()

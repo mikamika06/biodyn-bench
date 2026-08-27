@@ -7,6 +7,7 @@ PARAMS = {
     "bcv_common": 0.1, "bcv_df": 60,
     "sigma_z": 0.6,
     "dropout_mid": None, "dropout_shape": -1.0,
+    "closure": True,
 }
 
 
@@ -23,7 +24,12 @@ def to_counts_realistic(z, rng, **kw):
     mu = base[None, :] * np.exp(p["sigma_z"] * zs)
 
     lib = rng.lognormal(p["lib_loc"], p["lib_scale"], size=n_cells)
-    mu = mu / mu.sum(axis=1, keepdims=True) * lib[:, None]
+    if p["closure"]:
+        # композиційне замикання: сума лічильників клітини фіксована глибиною
+        # секвенування. Робить матрицю коваріацій майже виродженою.
+        mu = mu / mu.sum(axis=1, keepdims=True) * lib[:, None]
+    else:
+        mu = mu * (lib[:, None] / np.exp(p["lib_loc"]))
 
     bcv = (p["bcv_common"] + 1.0 / np.sqrt(np.maximum(base, 1e-8))) * \
           np.sqrt(p["bcv_df"] / rng.chisquare(p["bcv_df"], size=n_genes))

@@ -3,7 +3,7 @@ from joblib import Parallel, delayed
 from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor
 from methods.marginal import _standardize
 
-N_JOBS = -1
+N_JOBS = 6
 
 
 def _fit_one(x, j, cols, model_factory, seed):

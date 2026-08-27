@@ -9,3 +9,7 @@ __pycache__/
 .stfolder
 .stignore
 PROPOSAL.docx
+.venv_arb/
+.DS_Store
+run_*.sh
+!run_all.sh

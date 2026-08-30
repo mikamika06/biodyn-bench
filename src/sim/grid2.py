@@ -20,7 +20,9 @@ def s_feedback_latent(p, k, hide, iters=60, w=0.6, c=1.0):
 
 STRUCTURES2 = dict(STRUCTURES)
 STRUCTURES2["feedback_latent"] = s_feedback_latent
-SPEC2 = dict(SPEC)
+SPEC2 = {k: dict(v) for k, v in SPEC.items()}
+SPEC2["collider"]["neg"] = "M"
+SPEC2["collider"]["asks"] = "чи ВИГАДАЄ ребро між батьками спільної дитини, проти батьків РІЗНИХ дітей (та сама роль, той самий R²)"
 SPEC2["feedback_latent"] = {"pos": "S", "neg": "R", "correct": "high", "match": False, "ref": True,
                             "ref_fn": "confounder",
                             "asks": "чи відрізнить взаємну регуляцію з прихованим спільним драйвером від спільної причини"}
@@ -73,8 +75,15 @@ def balance_r2(z, hidden, rng, target=None, n_nuis=N_NUISANCE, k=NUIS_K):
     return np.column_stack([z, nuis]), tgt
 
 
+def role_matched(pairs, structure):
+    S = pairs.get("S") or []
+    if structure == "collider" and len(S) >= 2:
+        return [(S[i][0], S[(i + 1) % len(S)][1]) for i in range(len(S))]
+    return []
+
+
 def build2(structure, seed, cfg=None, k=1.6, hide=False, link="linear",
-           rho=0.0, counts_kw=None, kr=1.0, noise_dist="gauss", balance=True):
+           rho=0.0, counts_kw=None, kr=1.0, noise_dist="gauss", balance=False):
     cfg = cfg or DEFAULT
     rng = np.random.default_rng(seed)
     p = Panel(cfg["n_cells"], rng, link, rho, noise_dist=noise_dist)
@@ -92,6 +101,7 @@ def build2(structure, seed, cfg=None, k=1.6, hide=False, link="linear",
     nulls = [p.add(p.new()) for _ in range(cfg["n_null"])]
     p.pairs["N"] = [(nulls[i], nulls[i + 1]) for i in range(0, len(nulls) - 1, 2)]
     z, pairs, hidden = p.finish()
+    pairs["M"] = role_matched(pairs, structure)
     if balance:
         z, _ = balance_r2(z, hidden, rng)
     counts = make_counts(z, rng, counts_kw)

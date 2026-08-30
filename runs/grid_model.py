@@ -83,7 +83,7 @@ for seed in range(a.seeds):
                                seed=seed, verbose=False, dev=dev)
             zs, _, _ = standardize(expr)
 
-        types = [t for t in ("D", "S", "R", "N") if pairs.get(t)]
+        types = [t for t in ("D", "S", "R", "N", "M") if pairs.get(t)]
         plist = [(t, i, j) for t in types for i, j in pairs[t]]
         pl = [(i, j) for _, i, j in plist]
 

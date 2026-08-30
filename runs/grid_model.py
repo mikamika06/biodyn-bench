@@ -20,7 +20,7 @@ from model.data import standardize
 from model.interp import (attention_network, gradient_network,
                           intervention_effect, probe_effect, probe_control,
                           cascade_randomize, probe_layers)
-from eval.strength import matched_pairs_r2
+from eval.strength import matched_pairs_r2, match_subsets, strengths, r2_nodes, r2_central
 from model.train import train, device, linear_ceiling, validate
 from model.transformer import GeneTransformer
 from model.data import CellDataset, split
@@ -83,6 +83,18 @@ for seed in range(a.seeds):
                                seed=seed, verbose=False, dev=dev)
             zs, _, _ = standardize(expr)
 
+        if SPEC[name].get("neg") == "M" and pairs.get("M"):
+            sa, sb = strengths(expr, pairs["S"]), strengths(expr, pairs["M"])
+            ia, ib = match_subsets(sa, sb, np.random.default_rng(seed), bins=6)
+            if len(ia) >= 6:
+                pairs["S"] = [pairs["S"][i] for i in ia]
+                pairs["M"] = [pairs["M"][i] for i in ib]
+            r2n = r2_nodes(expr)
+            baseline = {"n_matched": int(len(pairs["S"])),
+                        "corr_only": auroc(strengths(expr, pairs["S"]), strengths(expr, pairs["M"])),
+                        "r2_only": auroc(r2_central(expr, pairs["S"], r2n), r2_central(expr, pairs["M"], r2n))}
+        else:
+            baseline = None
         types = [t for t in ("D", "S", "R", "N", "M") if pairs.get(t)]
         plist = [(t, i, j) for t in types for i, j in pairs[t]]
         pl = [(i, j) for _, i, j in plist]
@@ -98,6 +110,7 @@ for seed in range(a.seeds):
         ev = np.array([eff[(i, j)] for i, j in pl])
 
         row = {"k": k, "ceiling": ceil, "val_mse": min(h[2] for h in hist),
+               "baseline_m": baseline,
                "correct": sp["correct"], "pos": sp["pos"], "neg": sp["neg"],
                "model_truth": auroc(eff_t[sp["pos"]], eff_t[sp["neg"]]),
                "model_control": auroc(eff_t["D"], eff_t["N"]) if "N" in eff_t else None,

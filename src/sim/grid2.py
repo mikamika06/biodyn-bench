@@ -22,6 +22,10 @@ STRUCTURES2 = dict(STRUCTURES)
 STRUCTURES2["feedback_latent"] = s_feedback_latent
 SPEC2 = {k: dict(v) for k, v in SPEC.items()}
 SPEC2["collider"]["neg"] = "M"
+SPEC2["and"]["neg"] = "M"
+SPEC2["and"]["asks"] = "чи знайде синергічне ребро проти пар вхід-вихід РІЗНИХ модулів (та сама роль)"
+SPEC2["ffl"]["neg"] = "M"
+SPEC2["ffl"]["asks"] = "чи відрізнить пряме ребро A→C від пари корінь-онук ланцюга (лише непрямий шлях), зрівняної за силою"
 SPEC2["collider"]["asks"] = "чи ВИГАДАЄ ребро між батьками спільної дитини, проти батьків РІЗНИХ дітей (та сама роль, той самий R²)"
 SPEC2["feedback_latent"] = {"pos": "S", "neg": "R", "correct": "high", "match": False, "ref": True,
                             "ref_fn": "confounder",
@@ -77,13 +81,47 @@ def balance_r2(z, hidden, rng, target=None, n_nuis=N_NUISANCE, k=NUIS_K):
 
 def role_matched(pairs, structure):
     S = pairs.get("S") or []
-    if structure == "collider" and len(S) >= 2:
+    if structure in ("collider", "and") and len(S) >= 2:
         return [(S[i][0], S[(i + 1) % len(S)][1]) for i in range(len(S))]
     return []
 
 
+def s_chain_m(p, km):
+    a = p.new()
+    b = km * p.sign() * p.f(a) + p.eps()
+    c = km * p.sign() * p.f(b) + p.eps()
+    ia = p.add(a)
+    p.add(b)
+    p.pairs.setdefault("M", []).append((ia, p.add(c)))
+
+
+_KM_CACHE = {}
+
+
+def tune_km(cfg, link, rho, counts_kw, noise_dist, seeds=(101, 102, 103), lo=0.01, hi=40.0, iters=30):
+    from sim.grid import _bisect
+    from sim.counts import ckey
+    key = (tuple(sorted(cfg.items())), link, rho, ckey(counts_kw), noise_dist)
+    if key in _KM_CACHE:
+        return _KM_CACHE[key]
+    from eval.strength import strengths
+    import numpy as _np
+
+    def s_strength(km, typ):
+        vals = []
+        for sd in seeds:
+            expr, pairs = build2("ffl", sd, cfg, 1.6, False, link, rho, counts_kw, 1.0, noise_dist, km=km)
+            vals.append(float(_np.mean(_np.abs(strengths(expr, pairs[typ])))))
+        return float(_np.mean(vals))
+
+    target = s_strength(1.6, "S")
+    km = _bisect(lambda mid: s_strength(mid, "M"), target, lo, hi, iters)
+    _KM_CACHE[key] = (km, target)
+    return km, target
+
+
 def build2(structure, seed, cfg=None, k=1.6, hide=False, link="linear",
-           rho=0.0, counts_kw=None, kr=1.0, noise_dist="gauss", balance=False):
+           rho=0.0, counts_kw=None, kr=1.0, noise_dist="gauss", balance=False, km=None):
     cfg = cfg or DEFAULT
     rng = np.random.default_rng(seed)
     p = Panel(cfg["n_cells"], rng, link, rho, noise_dist=noise_dist)
@@ -100,8 +138,13 @@ def build2(structure, seed, cfg=None, k=1.6, hide=False, link="linear",
             ref_fn(p, kr)
     nulls = [p.add(p.new()) for _ in range(cfg["n_null"])]
     p.pairs["N"] = [(nulls[i], nulls[i + 1]) for i in range(0, len(nulls) - 1, 2)]
+    if structure == "ffl":
+        for _ in range(cfg["n_struct"]):
+            s_chain_m(p, km if km is not None else k)
     z, pairs, hidden = p.finish()
-    pairs["M"] = role_matched(pairs, structure)
+    if structure != "ffl":
+        pairs["M"] = role_matched(pairs, structure)
+    pairs.setdefault("M", [])
     if balance:
         z, _ = balance_r2(z, hidden, rng)
     counts = make_counts(z, rng, counts_kw)
@@ -134,5 +177,8 @@ def matched2(structure, seed, cfg=None, hide=False, link="linear", rho=0.0,
     with _use_v2():
         k, target = tune(structure, cfg, hide, link, rho, counts_kw, stat=stat, noise_dist=noise_dist)
         kr, rtarget = tune_ref(structure, cfg, hide, link, rho, counts_kw, stat=stat, k=k, noise_dist=noise_dist)
-        expr, pairs = build2(structure, seed, cfg, k, hide, link, rho, counts_kw, kr, noise_dist)
+        km = None
+        if structure == "ffl":
+            km, _ = tune_km(cfg or DEFAULT, link, rho, counts_kw, noise_dist)
+        expr, pairs = build2(structure, seed, cfg, k, hide, link, rho, counts_kw, kr, noise_dist, km=km)
     return expr, pairs, k, (target if target is not None else rtarget)

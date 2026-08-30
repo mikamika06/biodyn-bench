@@ -20,6 +20,8 @@ LINKS = {
 }
 NOISE = 1.0
 _CACHE = {}
+BUILDER = None
+GEN_TAG = "v1"
 
 # Форма шуму. Під ГАУСОВИМ шумом напрямок ребра не ідентифіковний у принципі
 # (клас еквівалентності Маркова). Під негаусовим — ідентифіковний (LiNGAM).
@@ -279,8 +281,8 @@ STATS = {"corr": mean_abs_corr, "mi": mean_pair_mi, "sq": mean_sq_corr,
 
 def _strength(structure, seed, cfg, k, hide, link, rho, counts_kw, typ,
               stat="corr", kr=1.0, noise_dist="gauss"):
-    expr, pairs = build(structure, seed, cfg, k, hide, link, rho, counts_kw, kr,
-                        noise_dist)
+    expr, pairs = (BUILDER or build)(structure, seed, cfg, k, hide, link, rho, counts_kw, kr,
+                                     noise_dist)
     if not pairs[typ]:
         return 0.0
     return STATS[stat](expr, pairs[typ])
@@ -309,7 +311,7 @@ def tune(structure, cfg=None, hide=False, link="linear", rho=0.0, counts_kw=None
     cfg = cfg or DEFAULT
     if not SPEC[structure]["match"]:
         return 1.6, None
-    key = ("k", structure, tuple(sorted(cfg.items())), hide, link, rho,
+    key = ("k", GEN_TAG, structure, tuple(sorted(cfg.items())), hide, link, rho,
            ckey(counts_kw), stat, noise_dist)
     if key in _CACHE:
         return _CACHE[key]
@@ -341,7 +343,7 @@ def tune_ref(structure, cfg=None, hide=False, link="linear", rho=0.0, counts_kw=
     cfg = cfg or DEFAULT
     if not SPEC[structure]["ref"]:
         return 1.0, None
-    key = ("kr", structure, tuple(sorted(cfg.items())), hide, link, rho,
+    key = (GEN_TAG, "kr", structure, tuple(sorted(cfg.items())), hide, link, rho,
            ckey(counts_kw), stat, noise_dist)
     if key in _CACHE:
         return _CACHE[key]

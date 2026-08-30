@@ -14,6 +14,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)  # out/ і data/ рахуються від кореня репо
 import numpy as np, torch
 from sim.grid import SPEC, matched
+from sim.grid2 import SPEC2, matched2
 from eval.metrics import auroc
 from model.data import standardize
 from model.interp import (attention_network, gradient_network,
@@ -40,6 +41,7 @@ ap.add_argument("--control-task", action="store_true")
 ap.add_argument("--cascade", action="store_true")
 ap.add_argument("--probe-layers", action="store_true")
 ap.add_argument("--match-r2", action="store_true")
+ap.add_argument("--gen", default="v1", choices=["v1", "v2"])
 a = ap.parse_args()
 if a.out is None:
     a.out = "grid_model_control.json" if a.control else "grid_model.json"
@@ -47,6 +49,9 @@ if a.out is None:
 SMALL = {"n_cells": 5000, "n_struct": a.panel, "n_direct": a.panel,
          "n_ref": a.panel, "n_null": a.panel}
 dev = device()
+if a.gen == "v2":
+    SPEC = SPEC2
+    matched = matched2
 names = a.only.split(",") if a.only else list(SPEC)
 dst = pathlib.Path("out") / a.out
 report = json.loads(dst.read_text()) if dst.exists() else {}
@@ -60,7 +65,7 @@ def spearman(x, y):
 for seed in range(a.seeds):
     for name in names:
         sp = SPEC[name]
-        key = f"{name}|{seed}|{a.link}|{a.rho}|{a.panel}|{a.d}x{a.layers}" + ("|random" if a.control else "")
+        key = f"{name}|{seed}|{a.link}|{a.rho}|{a.panel}|{a.d}x{a.layers}" + ("|v2" if a.gen == "v2" else "") + ("|random" if a.control else "")
         if key in report:
             print(f"  пропуск {key}", flush=True); continue
         t0 = time.time()

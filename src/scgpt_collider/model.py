@@ -43,8 +43,8 @@ def load_model(dev=None, fp16=False):
     return m.to(dev), vocab
 
 
-def load_data():
-    a = sc.read_h5ad(ROOT / "data/scgpt_collider/pbmc3k_prepped.h5ad")
+def load_data(fname="pbmc3k_prepped.h5ad"):
+    a = sc.read_h5ad(ROOT / "data/scgpt_collider" / fname)
     genes = list(a.var_names)
     gene_ids = a.var["vocab_id"].to_numpy().astype(np.int64)
     xb = np.asarray(a.layers["X_binned"], dtype=np.float32)

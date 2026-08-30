@@ -66,10 +66,10 @@ def summarize(meta, preds, att_rp, att_pr, nl):
     return meta
 
 
-def stats(tag="int", n_edges=400, n_cells=20, seed=0):
+def stats(tag="int", n_edges=400, n_cells=20, seed=0, fname="pbmc3k_prepped.h5ad", min_co=20, do_edges=True):
     rng = np.random.default_rng(seed)
-    eng = Engine(want_attn=True)
-    df, tfs, tgt, tgt_in = pair_table(eng.genes, eng.present, min_co=20)
+    eng = Engine(want_attn=True, fname=fname)
+    df, tfs, tgt, tgt_in = pair_table(eng.genes, eng.present, min_co=min_co)
     mean_expr = eng.xl.mean(0)
     res_df = pd.read_csv(OUT / f"test2_pairs_{tag}.csv")
     ref = load_trrust()
@@ -82,6 +82,8 @@ def stats(tag="int", n_edges=400, n_cells=20, seed=0):
     res["shared_in_geneset_label"] = evaluate(res_df, "eff", None, rng, n_rewire=0, n_perm=500, label="shared_in")
     json.dump(res, open(OUT / f"test2_{tag}.json", "w"), indent=1)
     print("main stats saved", flush=True)
+    if not do_edges:
+        return
     gi = {g: i for i, g in enumerate(eng.genes)}
     targets = sorted({c for t in tfs for c in tgt_in[t]})
     tgt_idx = np.array([gi[c] for c in targets])
@@ -136,10 +138,10 @@ def stats(tag="int", n_edges=400, n_cells=20, seed=0):
     print("pos control att", json.dumps({kk: pc["att"][kk] for kk in keys if kk in pc["att"]}))
 
 
-def main(n_a=1500, n_cells=40, tag="int", seed=0):
+def main(n_a=1500, n_cells=40, tag="int", seed=0, fname="pbmc3k_prepped.h5ad", min_co=20):
     rng = np.random.default_rng(seed)
-    eng = Engine(want_attn=True)
-    df, tfs, tgt, tgt_in = pair_table(eng.genes, eng.present, min_co=20)
+    eng = Engine(want_attn=True, fname=fname)
+    df, tfs, tgt, tgt_in = pair_table(eng.genes, eng.present, min_co=min_co)
     mean_expr = eng.xl.mean(0)
     df["expr"] = np.log(mean_expr[df.ia.values] + 1e-3) + np.log(mean_expr[df.ib.values] + 1e-3)
     pairs = sample_matched(df, n_a, rng)
@@ -158,6 +160,6 @@ def main(n_a=1500, n_cells=40, tag="int", seed=0):
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a and a[0] == "stats":
-        stats(a[1] if len(a) > 1 else "int")
+        stats(a[1] if len(a) > 1 else "int", fname=a[2] if len(a) > 2 else "pbmc3k_prepped.h5ad", min_co=int(a[3]) if len(a) > 3 else 20, do_edges=len(a) < 5)
     else:
-        main(int(a[0]) if a else 1500, int(a[1]) if len(a) > 1 else 40, a[2] if len(a) > 2 else "int")
+        main(int(a[0]) if a else 1500, int(a[1]) if len(a) > 1 else 40, a[2] if len(a) > 2 else "int", fname=a[3] if len(a) > 3 else "pbmc3k_prepped.h5ad", min_co=int(a[4]) if len(a) > 4 else 20)

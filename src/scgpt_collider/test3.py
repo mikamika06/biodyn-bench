@@ -53,11 +53,11 @@ def build(eng, pairs, tgt_in, gi, n_cells, rng, mask_frac=0.25):
     return rows, pd.DataFrame(meta)
 
 
-def main(n_a=600, n_cells=20, tag="mor", seed=0):
+def main(n_a=600, n_cells=20, tag="mor", seed=0, fname="pbmc3k_prepped.h5ad", min_co=20):
     rng = np.random.default_rng(seed)
-    eng = Engine(want_attn=True)
+    eng = Engine(want_attn=True, fname=fname)
     gi = {g: i for i, g in enumerate(eng.genes)}
-    df, tfs, tgt, tgt_in = pair_table(eng.genes, eng.present, min_co=20)
+    df, tfs, tgt, tgt_in = pair_table(eng.genes, eng.present, min_co=min_co)
     mean_expr = eng.xl.mean(0)
     df["expr"] = np.log(mean_expr[df.ia.values] + 1e-3) + np.log(mean_expr[df.ib.values] + 1e-3)
     P = eng.present
@@ -138,4 +138,4 @@ def main(n_a=600, n_cells=20, tag="mor", seed=0):
 
 if __name__ == "__main__":
     a = sys.argv[1:]
-    main(int(a[0]) if a else 600, int(a[1]) if len(a) > 1 else 20, a[2] if len(a) > 2 else "mor")
+    main(int(a[0]) if a else 600, int(a[1]) if len(a) > 1 else 20, a[2] if len(a) > 2 else "mor", fname=a[3] if len(a) > 3 else "pbmc3k_prepped.h5ad", min_co=int(a[4]) if len(a) > 4 else 20)

@@ -13,3 +13,4 @@ PROPOSAL.docx
 .DS_Store
 run_*.sh
 !run_all.sh
+.venv_scgpt/

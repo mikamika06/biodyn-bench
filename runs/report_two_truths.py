@@ -3,8 +3,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
 import numpy as np
 
-SRC = pathlib.Path("out/grid_model_two_truths.json")
-DST = pathlib.Path("out/RESULTS-two-truths.md")
+import sys as _sys
+SRC = pathlib.Path(_sys.argv[1] if len(_sys.argv) > 1 else "out/grid_model_two_truths.json")
+DST = pathlib.Path(_sys.argv[2] if len(_sys.argv) > 2 else "out/RESULTS-two-truths.md")
 
 
 def ci(vals, n_boot=2000, seed=0):
@@ -51,6 +52,16 @@ def main():
         mse = ci([r["val_mse"] for r in tr]); ceil = ci([r["ceiling"] for r in tr])
         A("%-13s %-6s %-26s %-26s %s / %s" % (st, need, f(ci([r["model_truth"] for r in tr])), f(ci([r["model_truth"] for r in rd])),
                                              f(mse), f(ceil)))
+    A("```\n")
+    A("## 1b. Бейзлайни на роль-зрівняних парах (де neg = M)\n")
+    A("```")
+    A("%-13s %-10s %-12s %-12s" % ("структура", "n пар", "corr-only", "R²-only"))
+    for st in structs:
+        rows = [r["baseline_m"] for r in trained.get(st, []) if r.get("baseline_m")]
+        if not rows:
+            continue
+        A("%-13s %-10.0f %-12.3f %-12.3f" % (st, np.mean([x["n_matched"] for x in rows]),
+                                             np.mean([x["corr_only"] for x in rows]), np.mean([x["r2_only"] for x in rows])))
     A("```\n")
     A("## 2. Методи проти закладеної істини: навчена / випадкова\n")
     for nm in ("увага", "градієнт", "проба"):

@@ -184,6 +184,100 @@ def probe_effect(model, x, dev, pairs, n_cells=1024, seed=0, mask_frac=0.15):
     return out
 
 
+def probe_control(model, x, dev, pairs, n_cells=1024, seed=0, mask_frac=0.15):
+    model.eval()
+    g = x.shape[1]
+    rng = np.random.default_rng(seed)
+    xs = torch.tensor(x[:n_cells], dtype=torch.float32)
+    control_of = {}
+    for i, j in pairs:
+        if i not in control_of:
+            pool = [c for c in range(g) if c not in (i, j)]
+            control_of[i] = int(rng.choice(pool))
+    by_target = {}
+    for i, j in pairs:
+        by_target.setdefault(j, []).append(i)
+    out = {}
+    for j, srcs in by_target.items():
+        excl = set(srcs) | {control_of[i] for i in srcs}
+        st = _states_for(model, xs, dev, [j], g, rng, mask_frac, exclude=excl)[j]
+        for i in srcs:
+            true_r2 = max(_ridge_r2(st, x[:n_cells, i]), 0.0)
+            ctrl_r2 = max(_ridge_r2(st, x[:n_cells, control_of[i]]), 0.0)
+            out[(i, j)] = {"true": true_r2, "control": ctrl_r2, "selectivity": true_r2 - ctrl_r2}
+    return out
+
+
+def _reinit(module, gen):
+    with torch.no_grad():
+        for prm in module.parameters():
+            std = float(prm.std().item()) if prm.numel() > 1 else 0.02
+            prm.copy_(torch.randn(prm.shape, generator=gen, device="cpu").to(prm.device) * (std if std > 0 else 0.02))
+
+
+def cascade_randomize(model, x, dev, n_cells=512, seed=0, mask_frac=0.15):
+    import copy
+    n_layers = len(model.encoder.layers)
+    stages = []
+    for k in range(0, n_layers + 2):
+        m = copy.deepcopy(model)
+        gen = torch.Generator().manual_seed(seed * 1000 + k)
+        if k >= 1:
+            _reinit(m.head, gen)
+        for li in range(n_layers - 1, n_layers - 1 - (k - 1), -1):
+            if k >= 2 and li >= 0:
+                _reinit(m.encoder.layers[li], gen)
+        if k == n_layers + 1:
+            _reinit(m.gene_emb, gen)
+            _reinit(m.value_proj, gen)
+        att = attention_network(m, x, dev, mask_frac=mask_frac, n_cells=n_cells, seed=seed)
+        grad = gradient_network(m, x, dev, mask_frac=mask_frac, n_cells=n_cells, seed=seed)
+        label = "orig" if k == 0 else ("head" if k == 1 else ("emb" if k == n_layers + 1 else "layers>=%d" % (n_layers - (k - 1))))
+        stages.append({"stage": k, "label": label, "att": att, "grad": grad})
+        del m
+    return stages
+
+
+@torch.no_grad()
+def probe_layers(model, x, dev, pairs, n_cells=1024, seed=0, mask_frac=0.15, bs=128):
+    model.eval()
+    g = x.shape[1]
+    rng = np.random.default_rng(seed)
+    xs = torch.tensor(x[:n_cells], dtype=torch.float32)
+    control_of = {}
+    for i, j in pairs:
+        if i not in control_of:
+            control_of[i] = int(rng.choice([c for c in range(g) if c not in (i, j)]))
+    by_target = {}
+    for i, j in pairs:
+        by_target.setdefault(j, []).append(i)
+    k_extra = max(0, int(mask_frac * g) - 1)
+    out = {}
+    for j, srcs in by_target.items():
+        excl = set(srcs) | {control_of[i] for i in srcs}
+        pool = np.array([c for c in range(g) if c != j and c not in excl])
+        per_layer = None
+        for s in range(0, xs.shape[0], bs):
+            b = xs[s:s + bs].to(dev)
+            m = torch.zeros(b.shape[0], g, dtype=torch.bool)
+            m[:, j] = True
+            if k_extra and len(pool):
+                for r in range(b.shape[0]):
+                    m[r, torch.from_numpy(rng.choice(pool, min(k_extra, len(pool)), replace=False))] = True
+            hs = model.layer_states(b, m.to(dev))
+            hs = [h[:, j, :].cpu().numpy() for h in hs]
+            if per_layer is None:
+                per_layer = [[] for _ in hs]
+            for li, h in enumerate(hs):
+                per_layer[li].append(h)
+        states = [np.concatenate(v) for v in per_layer]
+        for i in srcs:
+            tr = [max(_ridge_r2(st, x[:n_cells, i]), 0.0) for st in states]
+            ct = [max(_ridge_r2(st, x[:n_cells, control_of[i]]), 0.0) for st in states]
+            out[(i, j)] = {"true": tr, "control": ct}
+    return out
+
+
 @torch.no_grad()
 def patching_effect(model, x, dev, pairs, n_cells=512, seed=0, bs=128,
                     mask_frac=0.15, layers=None):

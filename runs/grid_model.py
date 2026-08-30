@@ -17,8 +17,12 @@ from sim.grid import SPEC, matched
 from eval.metrics import auroc
 from model.data import standardize
 from model.interp import (attention_network, gradient_network,
-                          intervention_effect, probe_effect)
-from model.train import train, device, linear_ceiling
+                          intervention_effect, probe_effect, probe_control,
+                          cascade_randomize, probe_layers)
+from eval.strength import matched_pairs_r2
+from model.train import train, device, linear_ceiling, validate
+from model.transformer import GeneTransformer
+from model.data import CellDataset, split
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--seeds", type=int, default=3)
@@ -30,8 +34,15 @@ ap.add_argument("--rho", type=float, default=0.0)
 ap.add_argument("--panel", type=int, default=25)
 ap.add_argument("--d", type=int, default=192)
 ap.add_argument("--layers", type=int, default=4)
-ap.add_argument("--out", default="grid_model.json")
+ap.add_argument("--out", default=None)
+ap.add_argument("--control", action="store_true")
+ap.add_argument("--control-task", action="store_true")
+ap.add_argument("--cascade", action="store_true")
+ap.add_argument("--probe-layers", action="store_true")
+ap.add_argument("--match-r2", action="store_true")
 a = ap.parse_args()
+if a.out is None:
+    a.out = "grid_model_control.json" if a.control else "grid_model.json"
 
 SMALL = {"n_cells": 5000, "n_struct": a.panel, "n_direct": a.panel,
          "n_ref": a.panel, "n_null": a.panel}
@@ -49,15 +60,23 @@ def spearman(x, y):
 for seed in range(a.seeds):
     for name in names:
         sp = SPEC[name]
-        key = f"{name}|{seed}|{a.link}|{a.rho}|{a.panel}|{a.d}x{a.layers}"
+        key = f"{name}|{seed}|{a.link}|{a.rho}|{a.panel}|{a.d}x{a.layers}" + ("|random" if a.control else "")
         if key in report:
             print(f"  пропуск {key}", flush=True); continue
         t0 = time.time()
         expr, pairs, k, tgt = matched(name, seed, SMALL, link=a.link, rho=a.rho)
         ceil = linear_ceiling(expr)
-        m, hist, _ = train(expr, steps=a.steps, d=a.d, n_layers=a.layers,
-                           seed=seed, verbose=False, dev=dev)
-        zs, _, _ = standardize(expr)
+        if a.control:
+            torch.manual_seed(seed)
+            m = GeneTransformer(expr.shape[1], a.d, a.layers).to(dev)
+            zs, mu, sd = standardize(expr)
+            _, te = split(expr, seed=seed)
+            dlv = torch.utils.data.DataLoader(CellDataset((te - mu) / sd, 0.15, seed + 1), batch_size=128)
+            hist = [(0, float("nan"), validate(m, dlv, dev))]
+        else:
+            m, hist, _ = train(expr, steps=a.steps, d=a.d, n_layers=a.layers,
+                               seed=seed, verbose=False, dev=dev)
+            zs, _, _ = standardize(expr)
 
         types = [t for t in ("D", "S", "R", "N") if pairs.get(t)]
         plist = [(t, i, j) for t in types for i, j in pairs[t]]
@@ -89,6 +108,50 @@ for seed in range(a.seeds):
             "planted": auroc(pr_t[sp["pos"]], pr_t[sp["neg"]]),
             "control": auroc(pr_t["D"], pr_t["N"]),
             "faith": spearman(np.array([pr[(i, j)] for i, j in pl]), ev)}
+        if a.match_r2:
+            pa, pb, st = matched_pairs_r2(expr, pairs[sp["pos"]], pairs[sp["neg"]], seed=seed)
+            row["r2_matched"] = {"n": st.get("n", 0), "corr_gap": st.get("corr_gap"), "r2_gap": st.get("r2_gap")}
+            if st.get("n", 0) >= 8:
+                ea = np.array([eff[p] for p in pa]); eb = np.array([eff[p] for p in pb])
+                row["r2_matched"]["model_truth"] = auroc(ea, eb)
+                for nm, w in nets.items():
+                    row["r2_matched"][nm] = auroc(np.array([w[i, j] for i, j in pa]), np.array([w[i, j] for i, j in pb]))
+                row["r2_matched"]["проба"] = auroc(np.array([pr[p] for p in pa]), np.array([pr[p] for p in pb]))
+        if a.cascade:
+            stages = cascade_randomize(m, zs, dev, n_cells=a.cells, seed=seed)
+            base_att = np.array([stages[0]["att"][i, j] for i, j in pl])
+            base_grad = np.array([stages[0]["grad"][i, j] for i, j in pl])
+            row["cascade"] = []
+            for stg in stages:
+                av = np.array([stg["att"][i, j] for i, j in pl]); gv = np.array([stg["grad"][i, j] for i, j in pl])
+                ga = lambda w, t: np.array([w[i, j] for i, j in pairs[t]])
+                row["cascade"].append({"stage": stg["stage"], "label": stg["label"],
+                                       "att_corr": spearman(av, base_att), "grad_corr": spearman(gv, base_grad),
+                                       "att_planted": auroc(ga(stg["att"], sp["pos"]), ga(stg["att"], sp["neg"])),
+                                       "grad_planted": auroc(ga(stg["grad"], sp["pos"]), ga(stg["grad"], sp["neg"]))})
+        if a.probe_layers:
+            plr = probe_layers(m, zs, dev, pl, n_cells=min(1024, 2 * a.cells), seed=seed)
+            n_l = len(next(iter(plr.values()))["true"])
+            row["probe_layers"] = []
+            for li in range(n_l):
+                sel = {p: v["true"][li] - v["control"][li] for p, v in plr.items()}
+                tru = {p: v["true"][li] for p, v in plr.items()}
+                row["probe_layers"].append({"layer": li,
+                                            "mean_true": float(np.mean([v["true"][li] for v in plr.values()])),
+                                            "mean_control": float(np.mean([v["control"][li] for v in plr.values()])),
+                                            "true_planted": auroc(by(tru)[sp["pos"]], by(tru)[sp["neg"]]),
+                                            "selectivity_planted": auroc(by(sel)[sp["pos"]], by(sel)[sp["neg"]])})
+        if a.control_task:
+            pc = probe_control(m, zs, dev, pl, n_cells=min(1024, 2 * a.cells), seed=seed)
+            sel = {(i, j): v["selectivity"] for (i, j), v in pc.items()}
+            ctrl = {(i, j): v["control"] for (i, j), v in pc.items()}
+            sel_t = by(sel)
+            row["methods"]["проба"]["control_task"] = {
+                "selectivity_planted": auroc(sel_t[sp["pos"]], sel_t[sp["neg"]]),
+                "mean_true": float(np.mean([v["true"] for v in pc.values()])),
+                "mean_control": float(np.mean([v["control"] for v in pc.values()])),
+                "mean_selectivity": float(np.mean(list(sel.values()))),
+                "control_planted": auroc(by(ctrl)[sp["pos"]], by(ctrl)[sp["neg"]])}
         report[key] = row
         dst.parent.mkdir(exist_ok=True)
         dst.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
